@@ -1,0 +1,15 @@
+# Copy this file to ~/.dbt/profiles.yml and fill in your credentials.
+# DO NOT commit the real profiles.yml — it contains your DB password.
+
+anime_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'anime_db') }}"
+      user: "{{ env_var('POSTGRES_USER', 'anime_user') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'anime_pass') }}"
+      schema: staging
+      threads: 4
