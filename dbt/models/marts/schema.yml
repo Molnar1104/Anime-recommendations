@@ -1,0 +1,102 @@
+version: 2
+
+models:
+  - name: dim_anime
+    description: >
+      Anime dimension. One row per unique anime.
+      Sourced from stg_anime with a genre_primary convenience column added.
+    columns:
+      - name: anime_id
+        description: "Primary key — AniList anime ID."
+        tests:
+          - unique
+          - not_null
+      - name: title
+        description: "Romanised title."
+        tests:
+          - not_null
+      - name: genre_primary
+        description: "First element of the genres array — used for simple grouping."
+      - name: avg_score
+        description: "Community average score (0–100)."
+      - name: release_year
+        description: "Year the anime first aired."
+      - name: status
+        description: "Normalised release status (e.g. FINISHED, RELEASING)."
+
+  - name: dim_user
+    description: >
+      User dimension. One row per unique reviewer.
+      Sourced from stg_users with account_age_days derived column.
+    columns:
+      - name: user_id
+        description: "Primary key — AniList user ID."
+        tests:
+          - unique
+          - not_null
+      - name: username
+        description: "Lowercased, trimmed username."
+        tests:
+          - not_null
+      - name: join_date
+        description: "Account creation date."
+      - name: account_age_days
+        description: "Days between join_date and today — derived at query time."
+
+  - name: dim_date
+    description: >
+      Date dimension. One row per calendar date, spanning the full range of
+      review dates plus a 7-day buffer each side.
+    columns:
+      - name: date_id
+        description: "Primary key — integer surrogate key in YYYYMMDD format."
+        tests:
+          - unique
+          - not_null
+      - name: full_date
+        description: "The calendar date."
+        tests:
+          - unique
+          - not_null
+      - name: is_weekend
+        description: "TRUE if the date falls on a Saturday or Sunday."
+
+  - name: fact_reviews
+    description: >
+      Central fact table. One row per review.
+      Joins to dim_anime, dim_user, and dim_date.
+      sentiment_score and sentiment_label are NULL until the ML layer (Phase 2) runs.
+    columns:
+      - name: review_id
+        description: "Primary key — AniList review ID."
+        tests:
+          - unique
+          - not_null
+      - name: anime_id
+        description: "Foreign key to dim_anime."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_anime')
+              field: anime_id
+      - name: user_id
+        description: "Foreign key to dim_user."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_user')
+              field: user_id
+      - name: date_id
+        description: "Foreign key to dim_date. NULL only if review_date had no match."
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_id
+      - name: score
+        description: "Review score (1–10)."
+        tests:
+          - not_null
+      - name: sentiment_score
+        description: "ML sentiment confidence score (Phase 2). NULL until sentiment.py runs."
+      - name: sentiment_label
+        description: "ML sentiment label: positive / neutral / negative (Phase 2). NULL until sentiment.py runs."
