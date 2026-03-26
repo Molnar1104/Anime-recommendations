@@ -68,15 +68,17 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('stg_anime')
-              field: anime_id
+              arguments:
+                to: ref('stg_anime')
+                field: anime_id
       - name: user_id
         description: "Foreign key to stg_users."
         tests:
           - not_null
           - relationships:
-              to: ref('stg_users')
-              field: user_id
+              arguments:
+                to: ref('stg_users')
+                field: user_id
       - name: score
         description: "Review score, must be 1–10."
         tests:
