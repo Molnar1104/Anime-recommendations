@@ -1,0 +1,84 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: anime_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-anime_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-anime_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-anime_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-anime_user} -d ${POSTGRES_DB:-anime_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    image: apache/airflow:2.8.1
+    container_name: anime_airflow_init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-anime_user}:${POSTGRES_PASSWORD:-anime_pass}@postgres:5432/airflow_db
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      _AIRFLOW_DB_UPGRADE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD:-admin}
+    command: version
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+
+  airflow-webserver:
+    image: apache/airflow:2.8.1
+    container_name: anime_airflow_webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-anime_user}:${POSTGRES_PASSWORD:-anime_pass}@postgres:5432/airflow_db
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+      - .:/opt/airflow/project
+    command: webserver
+    restart: unless-stopped
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.1
+    container_name: anime_airflow_scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-anime_user}:${POSTGRES_PASSWORD:-anime_pass}@postgres:5432/airflow_db
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+      - .:/opt/airflow/project
+    command: scheduler
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  airflow_logs:
