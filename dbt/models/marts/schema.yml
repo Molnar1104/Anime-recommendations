@@ -77,21 +77,24 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('dim_anime')
-              field: anime_id
+              arguments:
+                to: ref('dim_anime')
+                field: anime_id
       - name: user_id
         description: "Foreign key to dim_user."
         tests:
           - not_null
           - relationships:
-              to: ref('dim_user')
-              field: user_id
+              arguments:
+                to: ref('dim_user')
+                field: user_id
       - name: date_id
         description: "Foreign key to dim_date. NULL only if review_date had no match."
         tests:
           - relationships:
-              to: ref('dim_date')
-              field: date_id
+              arguments:
+                to: ref('dim_date')
+                field: date_id
       - name: score
         description: "Review score (1–10)."
         tests:
