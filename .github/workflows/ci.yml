@@ -1,0 +1,108 @@
+name: CI — pytest + dbt test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_pass
+          POSTGRES_DB: ci_anime_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci_user -d ci_anime_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_USER: ci_user
+      POSTGRES_PASSWORD: ci_pass
+      POSTGRES_DB: ci_anime_db
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create raw schema and tables
+        run: |
+          PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U $POSTGRES_USER -d $POSTGRES_DB -c "
+            CREATE SCHEMA IF NOT EXISTS raw;
+            CREATE SCHEMA IF NOT EXISTS staging;
+            CREATE SCHEMA IF NOT EXISTS marts;
+          "
+
+      - name: Run pytest
+        run: pytest tests/ -v --tb=short
+
+      - name: Set up dbt profile
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<PROFILE
+          AnimeProject:
+            outputs:
+              dev:
+                type: postgres
+                host: localhost
+                port: 5432
+                user: ci_user
+                pass: ci_pass
+                dbname: ci_anime_db
+                schema: public
+                threads: 4
+            target: dev
+          PROFILE
+
+      - name: dbt deps
+        run: cd dbt && dbt deps || true
+
+      - name: dbt run (with empty source tables)
+        run: |
+          cd dbt
+          # Create empty raw tables so dbt views can compile
+          PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U $POSTGRES_USER -d $POSTGRES_DB -c "
+            CREATE TABLE IF NOT EXISTS raw.anime (
+              anime_id INTEGER PRIMARY KEY,
+              title_romaji TEXT, title_english TEXT, genres TEXT[],
+              studio TEXT, episodes INTEGER, avg_score NUMERIC(5,2),
+              year INTEGER, status TEXT, description TEXT,
+              loaded_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS raw.reviews (
+              review_id INTEGER PRIMARY KEY, anime_id INTEGER,
+              user_id INTEGER, username TEXT, user_created_at BIGINT,
+              score INTEGER, summary TEXT, review_text TEXT,
+              created_at BIGINT, loaded_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS raw.users (
+              user_id INTEGER PRIMARY KEY, username TEXT,
+              join_date BIGINT, loaded_at TIMESTAMPTZ DEFAULT NOW()
+            );
+          "
+          dbt run
+
+      - name: dbt test
+        run: cd dbt && dbt test
