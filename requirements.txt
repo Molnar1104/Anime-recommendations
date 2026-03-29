@@ -14,9 +14,9 @@ dbt-postgres==1.10.0
 # Airflow (install separately via pip or use the Docker image)
 # apache-airflow==2.8.1  # Uncomment if installing locally instead of via Docker
 
-# ML (Phase 2 - uncomment when ready)
-# transformers==4.37.2
-# torch==2.2.0
+# ML (Phase 2)
+transformers>=4.37.0
+torch>=2.2.0
 
 # Optional dashboard (Phase 2)
 # streamlit==1.30.0

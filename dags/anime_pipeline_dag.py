@@ -2,10 +2,11 @@
 dags/anime_pipeline_dag.py
 
 Airflow DAG that orchestrates the full anime data pipeline:
-  1. fetch_anime_task  — extract data from AniList API → raw JSON files
-  2. load_raw_task     — load raw JSON into PostgreSQL raw schema
-  3. dbt_run_task      — run dbt models (staging → marts)
-  4. dbt_test_task     — run dbt data-quality tests
+  1. fetch_anime_task   — extract data from AniList API → raw JSON files
+  2. load_raw_task      — load raw JSON into PostgreSQL raw schema
+  3. dbt_run_task       — run dbt models (staging → marts)
+  4. dbt_test_task      — run dbt data-quality tests
+  5. sentiment_task     — run HuggingFace sentiment analysis on reviews
 
 Scheduled daily. Each task has 3 retries with exponential backoff.
 """
@@ -60,6 +61,13 @@ def _run_load(**kwargs):
 
     load_run()
 
+
+def _run_sentiment(**kwargs):
+    """Run HuggingFace sentiment analysis on reviews in fact_reviews."""
+    from ml.sentiment import run as sentiment_run
+
+    sentiment_run()
+
 # ---------------------------------------------------------------------------
 # DAG definition
 # ---------------------------------------------------------------------------
@@ -104,5 +112,10 @@ with DAG(
         bash_command=f"cd {DBT_DIR} && dbt test --profiles-dir {DBT_DIR}",
     )
 
+    sentiment_task = PythonOperator(
+        task_id="sentiment",
+        python_callable=_run_sentiment,
+    )
+
     # Task dependencies — linear chain
-    fetch_anime_task >> load_raw_task >> dbt_run_task >> dbt_test_task
+    fetch_anime_task >> load_raw_task >> dbt_run_task >> dbt_test_task >> sentiment_task
