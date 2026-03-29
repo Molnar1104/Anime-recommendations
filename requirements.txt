@@ -18,8 +18,8 @@ dbt-postgres==1.10.0
 transformers>=4.37.0
 torch>=2.2.0
 
-# Optional dashboard (Phase 2)
-# streamlit==1.30.0
+# Dashboard
+streamlit>=1.30.0
 
 # Dev / testing
 pytest==8.0.0
