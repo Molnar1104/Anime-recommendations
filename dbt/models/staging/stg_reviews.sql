@@ -4,7 +4,7 @@
   Cleans and casts raw.reviews:
     • Deduplicates: keeps the most-recent loaded row per review_id
     • Converts Unix timestamps to DATE
-    • Filters out unusable rows (NULL review_id, score out of 1–10 range,
+    • Filters out unusable rows (NULL review_id, score out of 1–100 range,
       empty review_text)
     • Standardises text fields
 */
@@ -35,7 +35,7 @@ cleaned AS (
     WHERE review_id   IS NOT NULL
       AND review_text IS NOT NULL
       AND TRIM(review_text) <> ''
-      AND score BETWEEN 1 AND 10
+      AND score BETWEEN 1 AND 100
 )
 
 SELECT * FROM cleaned
