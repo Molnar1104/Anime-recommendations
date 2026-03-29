@@ -2,41 +2,30 @@
 tests/test_dag.py
 
 Unit tests for the Airflow DAG definition.
-Validates structure, task order, and default args — no Airflow scheduler needed.
+Validates structure, task order, and default args.
+
+Requires Airflow to be installed — tests are skipped otherwise
+(Airflow is heavy and often installed via Docker rather than pip).
 """
 
-import importlib
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
+airflow = pytest.importorskip("airflow", reason="Airflow not installed — skipping DAG tests")
+
 
 # ---------------------------------------------------------------------------
-# Fixture: import the DAG module with Airflow mocked if not installed
+# Fixture: import the DAG module
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def dag_module():
-    """Import the DAG module. Works even without a full Airflow install
-    by providing lightweight stubs for the Airflow imports."""
-    # If airflow is installed, just import directly
-    try:
-        import airflow  # noqa: F401
-    except ImportError:
-        # Provide minimal stubs so the module can be parsed
-        airflow_mock = MagicMock()
-        sys.modules["airflow"] = airflow_mock
-        sys.modules["airflow.operators"] = airflow_mock.operators
-        sys.modules["airflow.operators.bash"] = airflow_mock.operators.bash
-        sys.modules["airflow.operators.python"] = airflow_mock.operators.python
-
     dag_path = Path(__file__).resolve().parents[1] / "dags"
     if str(dag_path) not in sys.path:
         sys.path.insert(0, str(dag_path))
 
-    # Ensure the project root is on the path so `extract` / `load` resolve
     project_root = Path(__file__).resolve().parents[1]
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
@@ -59,7 +48,6 @@ def test_dag_id(dag_module):
 
 def test_dag_schedule(dag_module):
     schedule = dag_module.dag.schedule_interval
-    # Airflow normalises @daily to a timedelta or cron — accept either
     assert schedule is not None, "DAG should have a schedule"
 
 

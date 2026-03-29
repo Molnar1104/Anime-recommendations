@@ -13,7 +13,7 @@ Design principles:
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -143,7 +143,7 @@ def _post_with_retry(
 # ---------------------------------------------------------------------------
 
 def _today_str() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%d")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def _output_path(entity: str) -> Path:
