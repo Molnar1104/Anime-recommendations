@@ -1,0 +1,146 @@
+version: 2
+
+# ─────────────────────────────────────────────
+# Sources — ML-managed tables (not built by dbt)
+# ─────────────────────────────────────────────
+sources:
+  - name: ml
+    schema: "{{ target.schema }}_marts"
+    description: "Tables created and populated by the ML layer (ml/sentiment.py), not managed by dbt."
+    tables:
+      - name: mart_review_sentiment
+        description: "Sentiment scores per review. Written by ml/sentiment.py after dbt run."
+        columns:
+          - name: review_id
+            description: "FK to fact_reviews.review_id."
+            tests:
+              - not_null
+
+# ─────────────────────────────────────────────
+# Models
+# ─────────────────────────────────────────────
+models:
+  - name: dim_anime
+    description: >
+      Anime dimension. One row per unique anime.
+      Sourced from stg_anime with a genre_primary convenience column added.
+    columns:
+      - name: anime_id
+        description: "Primary key — AniList anime ID."
+        tests:
+          - unique
+          - not_null
+      - name: title
+        description: "Romanised title."
+        tests:
+          - not_null
+      - name: genre_primary
+        description: "First element of the genres array — used for simple grouping."
+      - name: avg_score
+        description: "Community average score (0–100)."
+      - name: release_year
+        description: "Year the anime first aired."
+      - name: status
+        description: "Normalised release status (e.g. FINISHED, RELEASING)."
+
+  - name: dim_user
+    description: >
+      User dimension. One row per unique reviewer.
+      Sourced from stg_users with account_age_days derived column.
+    columns:
+      - name: user_id
+        description: "Primary key — AniList user ID."
+        tests:
+          - unique
+          - not_null
+      - name: username
+        description: "Lowercased, trimmed username."
+        tests:
+          - not_null
+      - name: join_date
+        description: "Account creation date."
+      - name: account_age_days
+        description: "Days between join_date and today — derived at query time."
+
+  - name: dim_date
+    description: >
+      Date dimension. One row per calendar date, spanning the full range of
+      review dates plus a 7-day buffer each side.
+    columns:
+      - name: date_id
+        description: "Primary key — integer surrogate key in YYYYMMDD format."
+        tests:
+          - unique
+          - not_null
+      - name: full_date
+        description: "The calendar date."
+        tests:
+          - unique
+          - not_null
+      - name: is_weekend
+        description: "TRUE if the date falls on a Saturday or Sunday."
+
+  - name: fact_reviews
+    description: >
+      Central fact table. One row per review.
+      Joins to dim_anime, dim_user, and dim_date.
+      sentiment_score and sentiment_label are NULL until the ML layer (Phase 2) runs.
+    columns:
+      - name: review_id
+        description: "Primary key — AniList review ID."
+        tests:
+          - unique
+          - not_null
+      - name: anime_id
+        description: "Foreign key to dim_anime."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_anime')
+                field: anime_id
+      - name: user_id
+        description: "Foreign key to dim_user."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_user')
+                field: user_id
+      - name: date_id
+        description: "Foreign key to dim_date. NULL only if review_date had no match."
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_id
+      - name: score
+        description: "Review score (1–10)."
+        tests:
+          - not_null
+      # Sentiment data is in mart_review_sentiment (ML-managed, not dbt)
+
+  - name: mart_recommendations
+    description: >
+      Sentiment-based anime recommendation engine.
+      For every anime with reviewed sentiment data, finds other anime sharing
+      at least one genre and ranks them by a composite score
+      (60% positive sentiment ratio + 40% normalised community score).
+      Top 10 recommendations per anime.
+    columns:
+      - name: source_anime_id
+        description: "The anime being looked up — filter on this column."
+        tests:
+          - not_null
+      - name: recommended_anime_id
+        description: "The recommended anime."
+        tests:
+          - not_null
+      - name: rank
+        description: "1–10 ranking within each source anime."
+        tests:
+          - not_null
+      - name: recommendation_score
+        description: "Composite score: 0.6 * positive_ratio + 0.4 * (community_score / 100)."
+        tests:
+          - not_null

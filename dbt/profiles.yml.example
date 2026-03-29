@@ -1,0 +1,15 @@
+# Copy this file to ~/.dbt/profiles.yml and fill in your credentials.
+# DO NOT commit the real profiles.yml — it contains your DB password.
+
+AnimeProject:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost         # or your DB hostname
+      port: 5432
+      dbname: your_db_name
+      user: your_db_user
+      pass: your_db_password  # use 'pass' not 'password' for dbt-postgres
+      schema: schemaAnime     # dbt will create schemaAnime_staging / schemaAnime_marts
+      threads: 4

@@ -1,0 +1,106 @@
+version: 2
+
+# ─────────────────────────────────────────────
+# Sources — point dbt at the raw PostgreSQL tables
+# ─────────────────────────────────────────────
+sources:
+  - name: raw
+    schema: raw
+    description: "Raw tables loaded from AniList JSON extracts."
+    tables:
+      - name: anime
+        description: "Raw anime metadata from AniList API."
+        columns:
+          - name: anime_id
+            description: "AniList internal anime ID."
+            tests:
+              - not_null
+      - name: reviews
+        description: "Raw user reviews from AniList API."
+        columns:
+          - name: review_id
+            description: "AniList internal review ID."
+            tests:
+              - not_null
+      - name: users
+        description: "Raw user records derived from review author data."
+        columns:
+          - name: user_id
+            description: "AniList internal user ID."
+            tests:
+              - not_null
+
+# ─────────────────────────────────────────────
+# Staging models
+# ─────────────────────────────────────────────
+models:
+  - name: stg_anime
+    description: >
+      Cleaned and cast anime metadata.
+      Rows with NULL anime_id or NULL title_romaji are removed.
+    columns:
+      - name: anime_id
+        description: "Primary key — AniList anime ID."
+        tests:
+          - unique
+          - not_null
+      - name: title_romaji
+        description: "Romanised title (required field)."
+        tests:
+          - not_null
+      - name: avg_score
+        description: "Average community score clipped to 0–100."
+      - name: status
+        description: "Normalised release status (e.g. FINISHED, RELEASING)."
+
+  - name: stg_reviews
+    description: >
+      Deduplicated, cleaned review records.
+      Rows with NULL review_id, empty review_text, or out-of-range score are removed.
+    columns:
+      - name: review_id
+        description: "Primary key — AniList review ID."
+        tests:
+          - unique
+          - not_null
+      - name: anime_id
+        description: "Foreign key to stg_anime."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_anime')
+                field: anime_id
+      - name: user_id
+        description: "Foreign key to stg_users."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_users')
+                field: user_id
+      - name: score
+        description: "Review score, must be 1–10."
+        tests:
+          - not_null
+      - name: review_text
+        description: "Full review body (non-empty after cleaning)."
+        tests:
+          - not_null
+
+  - name: stg_users
+    description: >
+      Deduplicated, cleaned user records with normalised usernames.
+    columns:
+      - name: user_id
+        description: "Primary key — AniList user ID."
+        tests:
+          - unique
+          - not_null
+      - name: username
+        description: "Lowercased, trimmed username."
+        tests:
+          - not_null
+          - unique
+      - name: join_date
+        description: "Account creation date parsed from Unix timestamp."
