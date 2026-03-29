@@ -1,26 +1,5 @@
-# Data extraction
-requests==2.31.0
-
-# Data processing
-pandas==2.2.0
-
-# Database
-psycopg2-binary==2.9.9
-sqlalchemy==2.0.25
-
-# dbt
-dbt-postgres==1.10.0
-
-# Airflow (install separately via pip or use the Docker image)
-# apache-airflow==2.8.1  # Uncomment if installing locally instead of via Docker
-
-# ML (Phase 2)
-transformers>=4.37.0
-torch>=2.2.0
-
-# Dashboard
+# Streamlit dashboard (also used by Streamlit Cloud deployment)
 streamlit>=1.30.0
+pandas>=2.2.0
 
-# Dev / testing
-pytest==8.0.0
-python-dotenv==1.0.1
+# For full pipeline development, install: pip install -r requirements-dev.txt
