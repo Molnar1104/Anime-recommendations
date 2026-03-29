@@ -103,3 +103,28 @@ models:
         description: "ML sentiment confidence score (Phase 2). NULL until sentiment.py runs."
       - name: sentiment_label
         description: "ML sentiment label: positive / neutral / negative (Phase 2). NULL until sentiment.py runs."
+
+  - name: mart_recommendations
+    description: >
+      Sentiment-based anime recommendation engine.
+      For every anime with reviewed sentiment data, finds other anime sharing
+      at least one genre and ranks them by a composite score
+      (60% positive sentiment ratio + 40% normalised community score).
+      Top 10 recommendations per anime.
+    columns:
+      - name: source_anime_id
+        description: "The anime being looked up — filter on this column."
+        tests:
+          - not_null
+      - name: recommended_anime_id
+        description: "The recommended anime."
+        tests:
+          - not_null
+      - name: rank
+        description: "1–10 ranking within each source anime."
+        tests:
+          - not_null
+      - name: recommendation_score
+        description: "Composite score: 0.6 * positive_ratio + 0.4 * (community_score / 100)."
+        tests:
+          - not_null
