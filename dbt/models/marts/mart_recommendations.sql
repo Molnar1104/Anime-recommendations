@@ -22,23 +22,28 @@
 */
 
 WITH review_sentiment AS (
-    -- Aggregate sentiment stats per anime (only scored reviews)
+    /*
+      Join fact_reviews with the ML-managed mart_review_sentiment table.
+      mart_review_sentiment is NOT a dbt model — it's created and populated
+      by ml/sentiment.py so that dbt run doesn't wipe sentiment scores.
+    */
     SELECT
-        anime_id,
+        f.anime_id,
         COUNT(*)                                                    AS review_count,
-        COUNT(*) FILTER (WHERE sentiment_label = 'positive')        AS positive_count,
-        COUNT(*) FILTER (WHERE sentiment_label = 'negative')        AS negative_count,
-        COUNT(*) FILTER (WHERE sentiment_label = 'neutral')         AS neutral_count,
+        COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')      AS positive_count,
+        COUNT(*) FILTER (WHERE s.sentiment_label = 'negative')      AS negative_count,
+        COUNT(*) FILTER (WHERE s.sentiment_label = 'neutral')       AS neutral_count,
         ROUND(
-            COUNT(*) FILTER (WHERE sentiment_label = 'positive')::NUMERIC
+            COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')::NUMERIC
             / NULLIF(COUNT(*), 0),
             4
         )                                                           AS positive_ratio,
-        ROUND(AVG(sentiment_score)::NUMERIC, 4)                     AS avg_sentiment_score,
-        ROUND(AVG(score)::NUMERIC, 2)                               AS avg_review_score
-    FROM {{ ref('fact_reviews') }}
-    WHERE sentiment_label IS NOT NULL
-    GROUP BY anime_id
+        ROUND(AVG(s.sentiment_score)::NUMERIC, 4)                   AS avg_sentiment_score,
+        ROUND(AVG(f.score)::NUMERIC, 2)                             AS avg_review_score
+    FROM {{ ref('fact_reviews') }} f
+    INNER JOIN {{ source('ml', 'mart_review_sentiment') }} s
+        ON f.review_id = s.review_id
+    GROUP BY f.anime_id
 ),
 
 anime_with_stats AS (

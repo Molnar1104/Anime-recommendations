@@ -5,12 +5,14 @@ Runs sentiment analysis on anime reviews stored in the marts schema
 using a HuggingFace Transformers model.
 
 Reads review_text from fact_reviews, infers sentiment (positive/neutral/negative),
-and writes sentiment_score + sentiment_label back to the same table.
+and writes results to a SEPARATE table (mart_review_sentiment) that dbt does NOT manage.
+
+This avoids the problem where dbt run rebuilds fact_reviews and wipes sentiment scores.
 
 Design:
 - Uses cardiffnlp/twitter-roberta-base-sentiment-latest
 - Batch processing in configurable chunks to control memory usage
-- Idempotent: overwrites existing sentiment values on re-run
+- Idempotent: TRUNCATE + INSERT on mart_review_sentiment each run
 - Truncates long reviews to the model's max token length
 """
 
@@ -19,6 +21,7 @@ import os
 from typing import Optional
 
 import psycopg2
+from psycopg2.extras import execute_values
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -97,11 +100,12 @@ def fetch_reviews(conn, limit: Optional[int] = None) -> list[tuple]:
 
     Returns list of (review_id, review_text) tuples.
     """
-    query = """
+    schema = _marts_schema()
+    query = f"""
         SELECT review_id, COALESCE(review_text, summary, '')
         FROM {schema}.fact_reviews
         ORDER BY review_id
-    """.format(schema=_marts_schema())
+    """
     if limit:
         query += f" LIMIT {int(limit)}"
 
@@ -110,40 +114,46 @@ def fetch_reviews(conn, limit: Optional[int] = None) -> list[tuple]:
         return cur.fetchall()
 
 
-def update_sentiments(conn, results: list[tuple]):
-    """Write sentiment_score and sentiment_label back to fact_reviews.
+def _ensure_sentiment_table(cur):
+    """Create the mart_review_sentiment table if it doesn't exist.
+
+    This table is NOT managed by dbt — it's owned by the ML layer.
+    """
+    schema = _marts_schema()
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS {schema}.mart_review_sentiment (
+            review_id       INTEGER PRIMARY KEY,
+            sentiment_label VARCHAR NOT NULL,
+            sentiment_score FLOAT NOT NULL,
+            scored_at       TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+
+
+def write_sentiments(conn, results: list[tuple]):
+    """Write sentiment results to mart_review_sentiment (separate table).
 
     Args:
         results: list of (review_id, sentiment_label, sentiment_score) tuples.
     """
     schema = _marts_schema()
     with conn.cursor() as cur:
-        # Use a temp table + UPDATE FROM for efficient bulk update
-        cur.execute("""
-            CREATE TEMP TABLE _sentiment_batch (
-                review_id INTEGER PRIMARY KEY,
-                sentiment_label VARCHAR,
-                sentiment_score FLOAT
-            ) ON COMMIT DROP
-        """)
+        _ensure_sentiment_table(cur)
 
-        from psycopg2.extras import execute_values
+        # Idempotent: truncate and reinsert
+        cur.execute(f"TRUNCATE TABLE {schema}.mart_review_sentiment")
+
         execute_values(
             cur,
-            "INSERT INTO _sentiment_batch (review_id, sentiment_label, sentiment_score) VALUES %s",
+            f"""
+            INSERT INTO {schema}.mart_review_sentiment
+                (review_id, sentiment_label, sentiment_score)
+            VALUES %s
+            """,
             results,
         )
 
-        cur.execute(f"""
-            UPDATE {schema}.fact_reviews f
-            SET sentiment_label = s.sentiment_label,
-                sentiment_score = s.sentiment_score
-            FROM _sentiment_batch s
-            WHERE f.review_id = s.review_id
-        """)
-
-        updated = cur.rowcount
-        logger.info("Updated %d rows with sentiment scores.", updated)
+        logger.info("Wrote %d rows to %s.mart_review_sentiment.", len(results), schema)
 
 
 def _marts_schema() -> str:
@@ -152,7 +162,7 @@ def _marts_schema() -> str:
     dbt appends the model schema to the target schema, e.g. 'schemaAnime_marts'.
     In CI the schema is just 'public_marts'. Read from env or default.
     """
-    return os.getenv("DBT_MARTS_SCHEMA", "\"schemaAnime_marts\"")
+    return os.getenv("DBT_MARTS_SCHEMA", '"schemaAnime_marts"')
 
 # ---------------------------------------------------------------------------
 # Entrypoint
@@ -190,7 +200,7 @@ def run(limit: Optional[int] = None):
             )
 
         with conn:
-            update_sentiments(conn, all_results)
+            write_sentiments(conn, all_results)
 
         logger.info("Sentiment scoring complete.")
     finally:

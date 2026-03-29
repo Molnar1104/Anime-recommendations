@@ -9,11 +9,9 @@
     user_id   → dim_user.user_id
     date_id   → dim_date.date_id
 
-  Columns reserved for the ML layer (Phase 2):
-    sentiment_score  FLOAT   — filled in by ml/sentiment.py
-    sentiment_label  VARCHAR — 'positive' | 'neutral' | 'negative'
-  Both are NULL until sentiment.py runs; schema is defined here so
-  the mart table exists and dbt tests can reference it immediately.
+  Sentiment data lives in a SEPARATE table (mart_review_sentiment)
+  managed by ml/sentiment.py — not here. This prevents dbt run from
+  wiping sentiment scores on every rebuild.
 */
 
 WITH reviews AS (
@@ -36,11 +34,7 @@ SELECT
 
     -- Text payload (needed by ML layer)
     r.summary,
-    r.review_text,
-
-    -- ML placeholders (Phase 2 — sentiment.py writes here)
-    CAST(NULL AS FLOAT)   AS sentiment_score,
-    CAST(NULL AS VARCHAR) AS sentiment_label
+    r.review_text
 
 FROM reviews r
 LEFT JOIN dates d
