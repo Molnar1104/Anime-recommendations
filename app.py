@@ -9,17 +9,18 @@ Features:
   - Bar chart: sentiment distribution per genre
   - Metrics: review count, positive ratio, avg score
 
+Supports two modes:
+  - Local: reads from PostgreSQL (when DB is available)
+  - Cloud: reads from CSV exports in data/exports/ (for Streamlit Cloud)
+
 Run: streamlit run app.py
 """
 
 import os
+from pathlib import Path
 
 import pandas as pd
-import psycopg2
 import streamlit as st
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Config
@@ -31,94 +32,125 @@ st.set_page_config(
     layout="wide",
 )
 
-MARTS_SCHEMA = os.getenv("DBT_MARTS_SCHEMA", '"schemaAnime_marts"')
+EXPORTS_DIR = Path(__file__).parent / "data" / "exports"
+USE_CSV = os.getenv("USE_CSV", "").lower() in ("1", "true", "yes") or not os.getenv("POSTGRES_HOST")
 
 
 # ---------------------------------------------------------------------------
-# Database helpers
+# Data loading — CSV mode (Streamlit Cloud) or DB mode (local)
 # ---------------------------------------------------------------------------
 
-@st.cache_resource
-def get_connection():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
-        dbname=os.getenv("POSTGRES_DB", "anime_db"),
-        user=os.getenv("POSTGRES_USER", "anime_user"),
-        password=os.getenv("POSTGRES_PASSWORD", "anime_pass"),
-    )
+if USE_CSV:
+    @st.cache_data
+    def load_anime_list() -> pd.DataFrame:
+        return pd.read_csv(EXPORTS_DIR / "dim_anime.csv")
 
+    @st.cache_data
+    def load_recommendations(anime_id: int) -> pd.DataFrame:
+        df = pd.read_csv(EXPORTS_DIR / "mart_recommendations.csv")
+        recs = df[df["source_anime_id"] == anime_id].copy()
+        recs = recs.rename(columns={
+            "recommended_title_display": "title",
+            "recommended_genre": "genre",
+            "recommended_studio": "studio",
+            "recommended_year": "year",
+            "recommended_community_score": "community_score",
+            "recommended_review_count": "reviews",
+            "recommended_positive_ratio": "positive_ratio",
+            "recommended_avg_sentiment": "avg_sentiment",
+        })
+        return recs[["rank", "title", "genre", "studio", "year",
+                      "community_score", "reviews", "positive_ratio",
+                      "avg_sentiment", "recommendation_score"]].sort_values("rank")
 
-def run_query(query: str) -> pd.DataFrame:
-    conn = get_connection()
-    return pd.read_sql(query, conn)
+    @st.cache_data
+    def load_sentiment_by_genre() -> pd.DataFrame:
+        return pd.read_csv(EXPORTS_DIR / "sentiment_by_genre.csv")
 
+    @st.cache_data
+    def load_anime_sentiment_stats(anime_id: int) -> pd.DataFrame:
+        df = pd.read_csv(EXPORTS_DIR / "anime_sentiment_stats.csv")
+        return df[df["anime_id"] == anime_id]
 
-# ---------------------------------------------------------------------------
-# Data loaders (cached)
-# ---------------------------------------------------------------------------
+else:
+    import psycopg2
+    from dotenv import load_dotenv
+    load_dotenv()
 
-@st.cache_data(ttl=300)
-def load_anime_list() -> pd.DataFrame:
-    return run_query(f"""
-        SELECT anime_id, title, title_display, genre_primary, avg_score, release_year
-        FROM {MARTS_SCHEMA}.dim_anime
-        ORDER BY title_display
-    """)
+    MARTS_SCHEMA = os.getenv("DBT_MARTS_SCHEMA", '"schemaAnime_marts"')
 
+    @st.cache_resource
+    def get_connection():
+        return psycopg2.connect(
+            host=os.getenv("POSTGRES_HOST", "localhost"),
+            port=int(os.getenv("POSTGRES_PORT", 5432)),
+            dbname=os.getenv("POSTGRES_DB", "anime_db"),
+            user=os.getenv("POSTGRES_USER", "anime_user"),
+            password=os.getenv("POSTGRES_PASSWORD", "anime_pass"),
+        )
 
-@st.cache_data(ttl=300)
-def load_recommendations(anime_id: int) -> pd.DataFrame:
-    return run_query(f"""
-        SELECT
-            rank,
-            recommended_title_display   AS title,
-            recommended_genre           AS genre,
-            recommended_studio          AS studio,
-            recommended_year            AS year,
-            recommended_community_score AS community_score,
-            recommended_review_count    AS reviews,
-            recommended_positive_ratio  AS positive_ratio,
-            recommended_avg_sentiment   AS avg_sentiment,
-            recommendation_score
-        FROM {MARTS_SCHEMA}.mart_recommendations
-        WHERE source_anime_id = {int(anime_id)}
-        ORDER BY rank
-    """)
+    def run_query(query: str) -> pd.DataFrame:
+        conn = get_connection()
+        return pd.read_sql(query, conn)
 
+    @st.cache_data(ttl=300)
+    def load_anime_list() -> pd.DataFrame:
+        return run_query(f"""
+            SELECT anime_id, title, title_display, genre_primary, avg_score, release_year
+            FROM {MARTS_SCHEMA}.dim_anime
+            ORDER BY title_display
+        """)
 
-@st.cache_data(ttl=300)
-def load_sentiment_by_genre() -> pd.DataFrame:
-    return run_query(f"""
-        SELECT
-            a.genre_primary                                         AS genre,
-            COUNT(*)                                                AS review_count,
-            COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')  AS positive,
-            COUNT(*) FILTER (WHERE s.sentiment_label = 'neutral')   AS neutral,
-            COUNT(*) FILTER (WHERE s.sentiment_label = 'negative')  AS negative
-        FROM {MARTS_SCHEMA}.fact_reviews f
-        JOIN {MARTS_SCHEMA}.mart_review_sentiment s ON f.review_id = s.review_id
-        JOIN {MARTS_SCHEMA}.dim_anime a ON f.anime_id = a.anime_id
-        WHERE a.genre_primary IS NOT NULL
-        GROUP BY a.genre_primary
-        ORDER BY review_count DESC
-    """)
+    @st.cache_data(ttl=300)
+    def load_recommendations(anime_id: int) -> pd.DataFrame:
+        return run_query(f"""
+            SELECT
+                rank,
+                recommended_title_display   AS title,
+                recommended_genre           AS genre,
+                recommended_studio          AS studio,
+                recommended_year            AS year,
+                recommended_community_score AS community_score,
+                recommended_review_count    AS reviews,
+                recommended_positive_ratio  AS positive_ratio,
+                recommended_avg_sentiment   AS avg_sentiment,
+                recommendation_score
+            FROM {MARTS_SCHEMA}.mart_recommendations
+            WHERE source_anime_id = {int(anime_id)}
+            ORDER BY rank
+        """)
 
+    @st.cache_data(ttl=300)
+    def load_sentiment_by_genre() -> pd.DataFrame:
+        return run_query(f"""
+            SELECT
+                a.genre_primary                                         AS genre,
+                COUNT(*)                                                AS review_count,
+                COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')  AS positive,
+                COUNT(*) FILTER (WHERE s.sentiment_label = 'neutral')   AS neutral,
+                COUNT(*) FILTER (WHERE s.sentiment_label = 'negative')  AS negative
+            FROM {MARTS_SCHEMA}.fact_reviews f
+            JOIN {MARTS_SCHEMA}.mart_review_sentiment s ON f.review_id = s.review_id
+            JOIN {MARTS_SCHEMA}.dim_anime a ON f.anime_id = a.anime_id
+            WHERE a.genre_primary IS NOT NULL
+            GROUP BY a.genre_primary
+            ORDER BY review_count DESC
+        """)
 
-@st.cache_data(ttl=300)
-def load_anime_sentiment_stats(anime_id: int) -> pd.DataFrame:
-    return run_query(f"""
-        SELECT
-            COUNT(*)                                                    AS total_reviews,
-            COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')      AS positive,
-            COUNT(*) FILTER (WHERE s.sentiment_label = 'neutral')       AS neutral,
-            COUNT(*) FILTER (WHERE s.sentiment_label = 'negative')      AS negative,
-            ROUND(AVG(f.score)::NUMERIC, 1)                             AS avg_score,
-            ROUND(AVG(s.sentiment_score)::NUMERIC, 3)                   AS avg_sentiment
-        FROM {MARTS_SCHEMA}.fact_reviews f
-        JOIN {MARTS_SCHEMA}.mart_review_sentiment s ON f.review_id = s.review_id
-        WHERE f.anime_id = {int(anime_id)}
-    """)
+    @st.cache_data(ttl=300)
+    def load_anime_sentiment_stats(anime_id: int) -> pd.DataFrame:
+        return run_query(f"""
+            SELECT
+                COUNT(*)                                                    AS total_reviews,
+                COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')      AS positive,
+                COUNT(*) FILTER (WHERE s.sentiment_label = 'neutral')       AS neutral,
+                COUNT(*) FILTER (WHERE s.sentiment_label = 'negative')      AS negative,
+                ROUND(AVG(f.score)::NUMERIC, 1)                             AS avg_score,
+                ROUND(AVG(s.sentiment_score)::NUMERIC, 3)                   AS avg_sentiment
+            FROM {MARTS_SCHEMA}.fact_reviews f
+            JOIN {MARTS_SCHEMA}.mart_review_sentiment s ON f.review_id = s.review_id
+            WHERE f.anime_id = {int(anime_id)}
+        """)
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +204,7 @@ if not stats.empty and stats.iloc[0]["total_reviews"] > 0:
     col5.metric("Avg Review Score", row["avg_score"])
     col6.metric("Avg Sentiment Confidence", row["avg_sentiment"])
 else:
-    st.info(f"No sentiment data for **{selected_title}** yet. Run `python -m ml.sentiment` to score reviews.")
+    st.info(f"No sentiment data for **{selected_title}** yet. This anime may not have reviews on AniList.")
 
 # ---------------------------------------------------------------------------
 # Recommendations table
