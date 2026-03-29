@@ -44,6 +44,7 @@ WITH review_sentiment AS (
     INNER JOIN {{ source('ml', 'mart_review_sentiment') }} s
         ON f.review_id = s.review_id
     GROUP BY f.anime_id
+    HAVING COUNT(*) >= 2  -- minimum 2 reviews to avoid noisy single-review ratios
 ),
 
 anime_with_stats AS (

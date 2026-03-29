@@ -61,7 +61,7 @@ cp .env.example .env
 
 ### 2. Install dependencies
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 ### 3. Set up database
@@ -137,7 +137,8 @@ streamlit run app.py
 ├── tests/                  # pytest unit tests
 ├── .github/workflows/      # GitHub Actions CI
 ├── docker-compose.yml      # PostgreSQL + Airflow services
-└── requirements.txt
+├── requirements.txt        # Lightweight (Streamlit Cloud deployment)
+└── requirements-dev.txt    # Full pipeline dependencies
 ```
 
 ## Key Design Decisions
@@ -150,7 +151,7 @@ streamlit run app.py
 ## Future Improvements
 
 - **More data** -- increase extraction from 50 to 500+ anime with 25+ reviews each for better recommendation coverage
-- **Better recommendations** -- tune the 60/40 sentiment/community score weighting, add a minimum review count threshold, penalise anime with very few reviews
+- **Better recommendations** -- tune the 60/40 sentiment/community score weighting, experiment with different minimum review thresholds (currently 2), add genre-distance weighting
 - **Collaborative filtering** -- add user-based recommendations (users who liked X also liked Y) alongside the current content-based approach
 - **Incremental models** -- switch dbt mart materializations from full rebuild to incremental for performance at scale
 - **Cloud deployment** -- migrate PostgreSQL to Supabase/Neon for a fully cloud-hosted pipeline
