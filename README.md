@@ -2,7 +2,7 @@
 
 An end-to-end data engineering + ML pipeline that extracts anime and review data from the AniList API, models it into a star schema data warehouse with dbt, orchestrates with Apache Airflow, and adds a HuggingFace sentiment layer to power anime recommendations.
 
-**[Live Dashboard](https://anime-recommendations.streamlit.app)** (link updated after deployment)
+**[Live Dashboard](https://anime-recommendations-project.streamlit.app/)**
 
 ## Architecture
 
