@@ -1,5 +1,24 @@
 version: 2
 
+# ─────────────────────────────────────────────
+# Sources — ML-managed tables (not built by dbt)
+# ─────────────────────────────────────────────
+sources:
+  - name: ml
+    schema: "{{ target.schema }}_marts"
+    description: "Tables created and populated by the ML layer (ml/sentiment.py), not managed by dbt."
+    tables:
+      - name: mart_review_sentiment
+        description: "Sentiment scores per review. Written by ml/sentiment.py after dbt run."
+        columns:
+          - name: review_id
+            description: "FK to fact_reviews.review_id."
+            tests:
+              - not_null
+
+# ─────────────────────────────────────────────
+# Models
+# ─────────────────────────────────────────────
 models:
   - name: dim_anime
     description: >
@@ -99,10 +118,7 @@ models:
         description: "Review score (1–10)."
         tests:
           - not_null
-      - name: sentiment_score
-        description: "ML sentiment confidence score (Phase 2). NULL until sentiment.py runs."
-      - name: sentiment_label
-        description: "ML sentiment label: positive / neutral / negative (Phase 2). NULL until sentiment.py runs."
+      # Sentiment data is in mart_review_sentiment (ML-managed, not dbt)
 
   - name: mart_recommendations
     description: >

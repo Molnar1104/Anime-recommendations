@@ -13,7 +13,7 @@ from ml.sentiment import (
     LABEL_MAP,
     classify_texts,
     fetch_reviews,
-    update_sentiments,
+    write_sentiments,
 )
 
 
@@ -109,15 +109,14 @@ def test_fetch_reviews_with_limit():
 
 
 # ---------------------------------------------------------------------------
-# update_sentiments
+# write_sentiments
 # ---------------------------------------------------------------------------
 
-def test_update_sentiments_creates_temp_table_and_updates():
+def test_write_sentiments_creates_table_and_inserts():
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
     mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
     mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-    mock_cursor.rowcount = 2
 
     data = [
         (1, "positive", 0.95),
@@ -125,12 +124,12 @@ def test_update_sentiments_creates_temp_table_and_updates():
     ]
 
     with patch("ml.sentiment.execute_values") as mock_ev:
-        update_sentiments(mock_conn, data)
+        write_sentiments(mock_conn, data)
 
-    # Should create temp table, insert via execute_values, then UPDATE FROM
     calls = mock_cursor.execute.call_args_list
-    assert any("CREATE TEMP TABLE" in str(c) for c in calls)
-    assert any("UPDATE" in str(c) for c in calls)
+    # Should create table if not exists, truncate, then insert via execute_values
+    assert any("CREATE TABLE IF NOT EXISTS" in str(c) for c in calls)
+    assert any("TRUNCATE" in str(c) for c in calls)
     assert mock_ev.called
 
 

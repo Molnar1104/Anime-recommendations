@@ -31,7 +31,7 @@ st.set_page_config(
     layout="wide",
 )
 
-MARTS_SCHEMA = os.getenv("DBT_MARTS_SCHEMA", "schemaAnime_marts")
+MARTS_SCHEMA = os.getenv("DBT_MARTS_SCHEMA", '"schemaAnime_marts"')
 
 
 # ---------------------------------------------------------------------------
@@ -91,15 +91,15 @@ def load_recommendations(anime_id: int) -> pd.DataFrame:
 def load_sentiment_by_genre() -> pd.DataFrame:
     return run_query(f"""
         SELECT
-            a.genre_primary                                     AS genre,
-            COUNT(*)                                            AS review_count,
-            COUNT(*) FILTER (WHERE f.sentiment_label = 'positive')  AS positive,
-            COUNT(*) FILTER (WHERE f.sentiment_label = 'neutral')   AS neutral,
-            COUNT(*) FILTER (WHERE f.sentiment_label = 'negative')  AS negative
+            a.genre_primary                                         AS genre,
+            COUNT(*)                                                AS review_count,
+            COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')  AS positive,
+            COUNT(*) FILTER (WHERE s.sentiment_label = 'neutral')   AS neutral,
+            COUNT(*) FILTER (WHERE s.sentiment_label = 'negative')  AS negative
         FROM {MARTS_SCHEMA}.fact_reviews f
+        JOIN {MARTS_SCHEMA}.mart_review_sentiment s ON f.review_id = s.review_id
         JOIN {MARTS_SCHEMA}.dim_anime a ON f.anime_id = a.anime_id
-        WHERE f.sentiment_label IS NOT NULL
-          AND a.genre_primary IS NOT NULL
+        WHERE a.genre_primary IS NOT NULL
         GROUP BY a.genre_primary
         ORDER BY review_count DESC
     """)
@@ -109,15 +109,15 @@ def load_sentiment_by_genre() -> pd.DataFrame:
 def load_anime_sentiment_stats(anime_id: int) -> pd.DataFrame:
     return run_query(f"""
         SELECT
-            COUNT(*)                                                AS total_reviews,
-            COUNT(*) FILTER (WHERE sentiment_label = 'positive')    AS positive,
-            COUNT(*) FILTER (WHERE sentiment_label = 'neutral')     AS neutral,
-            COUNT(*) FILTER (WHERE sentiment_label = 'negative')    AS negative,
-            ROUND(AVG(score)::NUMERIC, 1)                           AS avg_score,
-            ROUND(AVG(sentiment_score)::NUMERIC, 3)                 AS avg_sentiment
-        FROM {MARTS_SCHEMA}.fact_reviews
-        WHERE anime_id = {int(anime_id)}
-          AND sentiment_label IS NOT NULL
+            COUNT(*)                                                    AS total_reviews,
+            COUNT(*) FILTER (WHERE s.sentiment_label = 'positive')      AS positive,
+            COUNT(*) FILTER (WHERE s.sentiment_label = 'neutral')       AS neutral,
+            COUNT(*) FILTER (WHERE s.sentiment_label = 'negative')      AS negative,
+            ROUND(AVG(f.score)::NUMERIC, 1)                             AS avg_score,
+            ROUND(AVG(s.sentiment_score)::NUMERIC, 3)                   AS avg_sentiment
+        FROM {MARTS_SCHEMA}.fact_reviews f
+        JOIN {MARTS_SCHEMA}.mart_review_sentiment s ON f.review_id = s.review_id
+        WHERE f.anime_id = {int(anime_id)}
     """)
 
 
